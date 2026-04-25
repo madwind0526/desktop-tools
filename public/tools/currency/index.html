@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #000;
+  color: #fff;
+  font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── 헤더 ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid #1a1a1a;
+  flex-shrink: 0;
+}
+.header-title  { font-size: 20px; font-weight: 700; }
+.header-right  { display: flex; align-items: center; gap: 10px; }
+.update-time   { font-size: 11px; color: #444; }
+
+.refresh-btn {
+  background: none; border: none;
+  color: #555; font-size: 20px;
+  cursor: pointer; padding: 2px 6px;
+  border-radius: 6px; line-height: 1;
+  transition: color 0.2s, background 0.2s;
+}
+.refresh-btn:hover { color: #aaa; background: #1a1a1a; }
+.refresh-btn.spin  { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 오버레이 ── */
+.overlay {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px; color: #555;
+}
+.overlay.hidden { display: none; }
+.overlay-msg    { font-size: 14px; white-space: pre-line; text-align: center; line-height: 1.7; }
+.overlay.error .overlay-msg { color: #f87171; }
+.retry-btn {
+  background: #1a1a1a; border: 1px solid #333;
+  color: #ccc; padding: 8px 22px;
+  border-radius: 20px; cursor: pointer;
+  font-size: 13px; font-family: inherit;
+}
+.retry-btn:hover { background: #2a2a2a; }
+
+/* ── 변환 영역 ── */
+.converter {
+  flex: 1; display: flex;
+  flex-direction: column; min-height: 0;
+}
+.converter.hidden { display: none; }
+
+.cur-row {
+  flex: 1; display: flex;
+  flex-direction: column; justify-content: center;
+  padding: 10px 20px; cursor: pointer;
+  border-bottom: 1px solid #1a1a1a;
+}
+.cur-row.focused .value     { color: #fff; }
+.cur-row:not(.focused) .value { color: #555; }
+.cur-selector { margin-bottom: 6px; }
+
+.cur-select {
+  background: #1a1a1a; border: none;
+  color: #ccc; font-size: 14px;
+  font-family: inherit;
+  padding: 5px 28px 5px 10px;
+  border-radius: 14px; cursor: pointer;
+  outline: none; appearance: none; -webkit-appearance: none;
+  max-width: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.cur-select option { background: #111; }
+
+.value {
+  font-size: 48px; font-weight: 200;
+  text-align: right; word-break: break-all;
+  transition: font-size 0.1s;
+}
+.value.small  { font-size: 34px; }
+.value.xsmall { font-size: 24px; }
+
+/* ── 환율 바 ── */
+.rate-bar {
+  display: flex; align-items: center;
+  justify-content: center; gap: 12px;
+  padding: 6px 20px; flex-shrink: 0;
+  border-bottom: 1px solid #1a1a1a;
+}
+.rate-text { font-size: 13px; color: #555; }
+
+.swap-btn {
+  background: #1a1a1a; border: none;
+  color: #7c6af7; font-size: 20px;
+  cursor: pointer; padding: 5px 10px;
+  border-radius: 10px; line-height: 1;
+  transition: background 0.15s;
+}
+.swap-btn:hover { background: #2a2a2a; }
+
+/* ── 키패드 ── */
+.keypad { padding: 8px 10px 14px; flex-shrink: 0; }
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.key {
+  height: 68px; width: 100%;
+  border: none; border-radius: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit; transition: opacity 0.1s;
+}
+.key:active { opacity: 0.55; }
+.k-num   { background: #2d2d2d; color: #fff;    font-size: 22px; font-weight: 300; }
+.k-clear { background: #1a1a1a; color: #f87171; font-size: 18px; font-weight: 500; }
+.k-back  { background: #1a1a1a; color: #fff;    font-size: 16px; }
+.k-nav   { background: #1a1a1a; color: #4ade80; font-size: 18px; }
+.k-dot   { background: #2d2d2d; color: #fff;    font-size: 22px; }
+.k-sign  { background: #1a1a1a; color: #ccc;    font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <span class="header-title">환율 변환기</span>
+  <div class="header-right">
+    <span class="update-time" id="updateTime"></span>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadRates()" title="새로고침">↻</button>
+  </div>
+</div>
+
+<!-- 로딩/오류 오버레이 -->
+<div class="overlay" id="overlay">
+  <div class="overlay-msg" id="overlayMsg">환율 정보를 불러오는 중...</div>
+  <button class="retry-btn" id="retryBtn" onclick="loadRates()" style="display:none">다시 시도</button>
+</div>
+
+<!-- 변환 영역 -->
+<div class="converter hidden" id="converter">
+  <div class="cur-row focused" id="rowTop" onclick="setFocus('top', true)">
+    <div class="cur-selector">
+      <select class="cur-select" id="selFrom" onchange="onCurChange()"></select>
+    </div>
+    <div class="value" id="valTop">0</div>
+  </div>
+
+  <div class="rate-bar">
+    <span class="rate-text" id="rateText">-</span>
+    <button class="swap-btn" onclick="swapCurrencies()" title="통화 교환">⇅</button>
+  </div>
+
+  <div class="cur-row" id="rowBot" onclick="setFocus('bot', true)">
+    <div class="cur-selector">
+      <select class="cur-select" id="selTo" onchange="onCurChange()"></select>
+    </div>
+    <div class="value" id="valBot">0</div>
+  </div>
+</div>
+
+<!-- 키패드 -->
+<div class="keypad">
+  <div class="key-grid">
+    <button class="key k-num"   onclick="pressNum('7')">7</button>
+    <button class="key k-num"   onclick="pressNum('8')">8</button>
+    <button class="key k-num"   onclick="pressNum('9')">9</button>
+    <button class="key k-clear" onclick="pressClear()">C</button>
+
+    <button class="key k-num"   onclick="pressNum('4')">4</button>
+    <button class="key k-num"   onclick="pressNum('5')">5</button>
+    <button class="key k-num"   onclick="pressNum('6')">6</button>
+    <button class="key k-back"  onclick="pressBack()">⌫</button>
+
+    <button class="key k-num"   onclick="pressNum('1')">1</button>
+    <button class="key k-num"   onclick="pressNum('2')">2</button>
+    <button class="key k-num"   onclick="pressNum('3')">3</button>
+    <button class="key k-nav"   onclick="setFocus('top')">↑</button>
+
+    <button class="key k-sign"  onclick="pressSign()">+/−</button>
+    <button class="key k-num"   onclick="pressNum('0')">0</button>
+    <button class="key k-dot"   onclick="pressDot()">.</button>
+    <button class="key k-nav"   onclick="setFocus('bot')">↓</button>
+  </div>
+</div>
+
+<script>
+let rates = {};
+let currencies = [];
+let fromCode = 'USD';
+let toCode   = 'KRW';
+let focused  = 'top';
+let topVal         = '';
+let botVal         = '';
+let clearOnNextInput = false;
+
+// ── 데이터 로드 ──
+async function loadRates() {
+  showLoading();
+  try {
+    const res = await fetch('http://localhost:3001/api/rates');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    rates = data.rates;
+    currencies = data.currencies;
+    buildSelectors();
+    if (data.updated) {
+      document.getElementById('updateTime').textContent = data.updated.slice(0, 16);
+    }
+    showConverter();
+    doConvert();
+  } catch (e) {
+    showError('환율 정보를 불러올 수 없습니다.\n인터넷 연결을 확인해주세요.');
+  }
+}
+
+function showLoading() {
+  document.getElementById('refreshBtn').classList.add('spin');
+  document.getElementById('overlay').className = 'overlay';
+  document.getElementById('overlayMsg').textContent = '환율 정보를 불러오는 중...';
+  document.getElementById('retryBtn').style.display = 'none';
+  document.getElementById('converter').className = 'converter hidden';
+}
+function showError(msg) {
+  document.getElementById('refreshBtn').classList.remove('spin');
+  document.getElementById('overlay').className = 'overlay error';
+  document.getElementById('overlayMsg').textContent = msg;
+  document.getElementById('retryBtn').style.display = 'inline-block';
+  document.getElementById('converter').className = 'converter hidden';
+}
+function showConverter() {
+  document.getElementById('refreshBtn').classList.remove('spin');
+  document.getElementById('overlay').className = 'overlay hidden';
+  document.getElementById('converter').className = 'converter';
+}
+
+function buildSelectors() {
+  ['selFrom', 'selTo'].forEach((id, i) => {
+    const sel = document.getElementById(id);
+    const cur = i === 0 ? fromCode : toCode;
+    sel.innerHTML = currencies.map(c =>
+      `<option value="${c.code}"${c.code === cur ? ' selected' : ''}>${c.flag} ${c.name} (${c.code})</option>`
+    ).join('');
+  });
+}
+
+function onCurChange() {
+  fromCode = document.getElementById('selFrom').value;
+  toCode   = document.getElementById('selTo').value;
+  doConvert();
+}
+
+function swapCurrencies() {
+  [fromCode, toCode] = [toCode, fromCode];
+  [topVal, botVal]   = [botVal, topVal];
+  buildSelectors();
+  doConvert();
+}
+
+// ── 변환 ──
+function doConvert() {
+  if (!rates[fromCode] || !rates[toCode]) return;
+  if (focused === 'top') {
+    botVal = convertAmt(topVal, fromCode, toCode);
+  } else {
+    topVal = convertAmt(botVal, toCode, fromCode);
+  }
+  updateDisplay();
+  updateRate();
+}
+
+function convertAmt(raw, from, to) {
+  const n = parseFloat(raw);
+  if (isNaN(n) || !rates[from] || !rates[to]) return '';
+  return String(n * rates[from] / rates[to]);
+}
+
+function updateRate() {
+  if (!rates[fromCode] || !rates[toCode]) return;
+  const rate = rates[fromCode] / rates[toCode];
+  document.getElementById('rateText').textContent =
+    `1 ${fromCode} = ${fmtRate(rate)} ${toCode}`;
+}
+
+// ── 포커스 ──
+function setFocus(side, clearNext = false) {
+  focused = side;
+  clearOnNextInput = clearNext;
+  document.getElementById('rowTop').classList.toggle('focused', side === 'top');
+  document.getElementById('rowBot').classList.toggle('focused', side === 'bot');
+}
+
+// ── 키패드 ──
+function pressNum(n) {
+  if (clearOnNextInput) {
+    topVal = ''; botVal = '';
+    clearOnNextInput = false;
+  }
+  if (focused === 'top') { topVal += n; botVal = convertAmt(topVal, fromCode, toCode); }
+  else                   { botVal += n; topVal = convertAmt(botVal, toCode, fromCode); }
+  updateDisplay();
+}
+function pressDot() {
+  const cur = focused === 'top' ? topVal : botVal;
+  if (cur.includes('.')) return;
+  if (focused === 'top') { topVal = (topVal || '0') + '.'; }
+  else                   { botVal = (botVal || '0') + '.'; }
+  updateDisplay();
+}
+function pressSign() {
+  if (focused === 'top') {
+    topVal = topVal.startsWith('-') ? topVal.slice(1) : (topVal ? '-' + topVal : '');
+    botVal = convertAmt(topVal, fromCode, toCode);
+  } else {
+    botVal = botVal.startsWith('-') ? botVal.slice(1) : (botVal ? '-' + botVal : '');
+    topVal = convertAmt(botVal, toCode, fromCode);
+  }
+  updateDisplay();
+}
+function pressBack() {
+  if (focused === 'top') {
+    topVal = topVal.slice(0, -1);
+    botVal = topVal ? convertAmt(topVal, fromCode, toCode) : '';
+  } else {
+    botVal = botVal.slice(0, -1);
+    topVal = botVal ? convertAmt(botVal, toCode, fromCode) : '';
+  }
+  updateDisplay();
+}
+function pressClear() {
+  topVal = ''; botVal = '';
+  updateDisplay();
+}
+
+// ── 디스플레이 ──
+function fmtDisplay(raw) {
+  if (!raw || raw === '-') return raw || '0';
+  if (raw.endsWith('.')) {
+    const n = parseInt(raw);
+    return (isNaN(n) ? '0' : Math.abs(n).toLocaleString('ko-KR')) + '.';
+  }
+  const n = parseFloat(raw);
+  if (isNaN(n) || !isFinite(n)) return '0';
+  if (Math.abs(n) >= 1e12) return n.toExponential(3);
+  const absN = Math.abs(n);
+  if (absN >= 100)  return n.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
+  if (absN >= 1)    return n.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
+  if (absN >= 0.001) return n.toLocaleString('ko-KR', { maximumFractionDigits: 6 });
+  return n.toExponential(4);
+}
+function fmtRate(n) {
+  if (n >= 100)     return n.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+  if (n >= 1)       return n.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
+  if (n >= 0.001)   return n.toFixed(6);
+  if (n >= 1e-5)    return n.toFixed(8);   // 0.00001 이상 → 소수점 표기
+  return n.toExponential(4);               // 1e-5 미만 → 지수 표기
+}
+function setValueEl(id, raw) {
+  const el = document.getElementById(id);
+  el.textContent = fmtDisplay(raw);
+  const len = el.textContent.replace(/,/g, '').replace(/\./g, '').length;
+  el.className = 'value' + (len > 13 ? ' xsmall' : len > 9 ? ' small' : '');
+}
+function updateDisplay() {
+  setValueEl('valTop', topVal);
+  setValueEl('valBot', botVal);
+}
+
+// ── 키보드 ──
+document.addEventListener('keydown', e => {
+  if (document.activeElement.tagName === 'SELECT') return;
+  if (e.key >= '0' && e.key <= '9')                   { e.preventDefault(); pressNum(e.key); }
+  else if (e.key === '.')                               { e.preventDefault(); pressDot(); }
+  else if (e.key === 'Backspace')                       { e.preventDefault(); pressBack(); }
+  else if (e.key === 'Escape' || e.key === 'Delete')   { e.preventDefault(); pressClear(); }
+  else if (e.key === '-')                               { e.preventDefault(); pressSign(); }
+  else if (e.key === 'ArrowUp')                         { e.preventDefault(); setFocus('top'); }
+  else if (e.key === 'ArrowDown')                       { e.preventDefault(); setFocus('bot'); }
+  else if (e.key === 'Tab') { e.preventDefault(); setFocus(focused === 'top' ? 'bot' : 'top'); }
+});
+
+loadRates();
+</script>
+</body>
+</html>

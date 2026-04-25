@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #000;
+  color: #fff;
+  font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── 툴바 ── */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px 0;
+  flex-shrink: 0;
+}
+
+.tool-btn {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.15s, color 0.15s;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.tool-btn:hover { background: #1e1e1e; color: #aaa; }
+
+/* 히스토리 버튼 */
+#histBtn       { font-size: 20px; }
+#histBtn.open  { color: #4ade80; background: #0a2a0a; }
+
+/* π 공학 버튼 */
+#sciBtn {
+  font-size: 22px;
+  font-style: italic;
+  font-weight: 700;
+  color: #555;
+  border: 2px solid transparent;
+}
+#sciBtn.active {
+  color: #4ade80;
+  border-color: #4ade80;
+  background: #0a2a0a;
+}
+
+/* ── 히스토리 패널 ── */
+.hist-panel {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 18px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.hist-panel.show { display: flex; }
+
+.hist-empty { color: #444; font-size: 14px; text-align: center; padding: 20px 0; }
+
+.hist-item {
+  padding: 10px 0;
+  border-bottom: 1px solid #111;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.hist-item:hover { background: #1a1a1a; }
+.hist-expr   { font-size: 13px; color: #555; }
+.hist-result { font-size: 22px; font-weight: 300; color: #ddd; text-align: right; }
+
+/* ── 디스플레이 ── */
+.display {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0 22px 8px;   /* right는 JS가 동적으로 덮어씀 */
+  min-height: 0;
+}
+
+.expr-line {
+  font-size: 18px;
+  color: #555;
+  text-align: right;
+  min-height: 24px;
+  word-break: break-all;
+}
+
+.result-line {
+  font-size: 64px;
+  font-weight: 200;
+  letter-spacing: -2px;
+  text-align: right;
+  word-break: break-all;
+  line-height: 1.05;
+  transition: font-size 0.1s;
+}
+.result-line.sm  { font-size: 44px; }
+.result-line.xs  { font-size: 32px; }
+.result-line.xxs { font-size: 24px; }
+
+/* ── 공학 패널 ── */
+.sci-panel { display: none; padding: 4px 10px 0; flex-shrink: 0; }
+.sci-panel.show { display: block; }
+
+/* ── 공통 버튼 래퍼 (중앙정렬 + 폭 제한) ── */
+.btn-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+/* ── 공학/일반 공통 그리드 ── */
+.key-grid, .sci-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  width: 100%;
+}
+
+/* ── 일반 모드: 전체 너비, 직사각형 버튼 ── */
+.normal-wrap .key-grid { gap: 7px; }
+.normal-wrap .key { height: 78px; aspect-ratio: unset; border-radius: 16px; }
+
+/* ── 공학 모드 활성: 모든 버튼 직사각형 같은 크기 ── */
+body.sci-on .btn-wrap { max-width: 100%; }
+body.sci-on .sci-panel .btn-wrap { max-width: 100%; }
+
+body.sci-on .sci-grid,
+body.sci-on .key-grid { gap: 5px; }
+
+body.sci-on .sci-btn,
+body.sci-on .key {
+  height: 52px;
+  aspect-ratio: unset !important;
+  border-radius: 12px;
+  width: 100%;
+}
+
+/* ── 키패드 래퍼 ── */
+.keypad { padding: 6px 8px 12px; flex-shrink: 0; }
+
+/* ── 버튼 공통 ── */
+.key, .sci-btn {
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.1s;
+  font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+}
+.key:active, .sci-btn:active { opacity: 0.5; }
+
+/* 일반 버튼 색상 */
+.k-num   { background: #2d2d2d; color: #fff;    font-size: 24px; font-weight: 300; }
+.k-op    { background: #1a1a1a; color: #4ade80; font-size: 22px; }
+.k-eq    { background: #1db954; color: #fff;    font-size: 22px; }
+.k-clear { background: #1a1a1a; color: #f87171; font-size: 20px; font-weight: 600; }
+.k-back  { background: #1a1a1a; color: #ccc;    font-size: 18px; }
+.k-paren { background: #1a1a1a; color: #888;    font-size: 16px; }
+.k-dot   { background: #2d2d2d; color: #fff;    font-size: 24px; }
+.k-pct   { background: #1a1a1a; color: #ccc;    font-size: 18px; }
+
+/* 공학 버튼 */
+.sci-btn             { background: #1a1a1a; color: #bbb; font-size: 14px; }
+.sci-btn:active      { background: #333; }
+.sci-btn.hi          { color: #4ade80; }
+.sci-btn.rad-on      { color: #fbbf24; }
+</style>
+</head>
+<body>
+
+<!-- 툴바 -->
+<div class="toolbar">
+  <button class="tool-btn" id="histBtn" onclick="toggleHist()" title="계산 이력">🕐</button>
+  <button class="tool-btn" id="sciBtn"  onclick="toggleSci()"  title="공학용 계산기">π</button>
+</div>
+
+<!-- 히스토리 패널 -->
+<div class="hist-panel" id="histPanel">
+  <div class="hist-empty" id="histEmpty">계산 이력이 없습니다</div>
+</div>
+
+<!-- 디스플레이 -->
+<div class="display" id="display">
+  <div class="expr-line"   id="exprLine"></div>
+  <div class="result-line" id="resultLine">0</div>
+</div>
+
+<!-- 공학 버튼 패널 -->
+<div class="sci-panel" id="sciPanel">
+  <div class="btn-wrap">
+    <div class="sci-grid">
+      <button class="sci-btn hi"          onclick="toggleSci()">⇄</button>
+      <button class="sci-btn" id="radBtn" onclick="toggleRad()">Rad</button>
+      <button class="sci-btn"             onclick="sciInput('sqrt(')">√</button>
+      <button class="sci-btn"             onclick="sciInput('abs(')">|x|</button>
+
+      <button class="sci-btn"             onclick="sciTrig('sin')">sin</button>
+      <button class="sci-btn"             onclick="sciTrig('cos')">cos</button>
+      <button class="sci-btn"             onclick="sciTrig('tan')">tan</button>
+      <button class="sci-btn hi"          onclick="sciConst('π')">π</button>
+
+      <button class="sci-btn"             onclick="sciInput('ln(')">ln</button>
+      <button class="sci-btn"             onclick="sciInput('log(')">log</button>
+      <button class="sci-btn"             onclick="sciInput('1/(')">1/x</button>
+      <button class="sci-btn hi"          onclick="sciConst('e')">e</button>
+
+      <button class="sci-btn"             onclick="sciInput('exp(')">eˣ</button>
+      <button class="sci-btn"             onclick="sciPow2()">x²</button>
+      <button class="sci-btn"             onclick="sciPowY()">xʸ</button>
+      <button class="sci-btn"             onclick="pressSign()">+/−</button>
+    </div>
+  </div>
+</div>
+
+<!-- 기본 키패드 -->
+<div class="keypad">
+  <div class="btn-wrap normal-wrap" id="mainBtnWrap">
+    <div class="key-grid">
+      <button class="key k-clear" onclick="pressClear()">C</button>
+      <button class="key k-back"  onclick="pressBack()">⌫</button>
+      <button class="key k-pct"   onclick="pressPercent()">%</button>
+      <button class="key k-op"    onclick="pressOp('÷')">÷</button>
+
+      <button class="key k-num"   onclick="pressNum('7')">7</button>
+      <button class="key k-num"   onclick="pressNum('8')">8</button>
+      <button class="key k-num"   onclick="pressNum('9')">9</button>
+      <button class="key k-op"    onclick="pressOp('×')">×</button>
+
+      <button class="key k-num"   onclick="pressNum('4')">4</button>
+      <button class="key k-num"   onclick="pressNum('5')">5</button>
+      <button class="key k-num"   onclick="pressNum('6')">6</button>
+      <button class="key k-op"    onclick="pressOp('−')">−</button>
+
+      <button class="key k-num"   onclick="pressNum('1')">1</button>
+      <button class="key k-num"   onclick="pressNum('2')">2</button>
+      <button class="key k-num"   onclick="pressNum('3')">3</button>
+      <button class="key k-op"    onclick="pressOp('+')">+</button>
+
+      <button class="key k-paren" onclick="pressParen()">( )</button>
+      <button class="key k-num"   onclick="pressNum('0')">0</button>
+      <button class="key k-dot"   onclick="pressDot()">.</button>
+      <button class="key k-eq"    onclick="pressEqual()">=</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let expr = '';
+let justEvaled = false;
+let isRad = true;
+let isSciMode = false;
+let isHistOpen = false;
+let history = [];
+
+const exprEl   = document.getElementById('exprLine');
+const resultEl = document.getElementById('resultLine');
+
+// ── 디스플레이: 입력 중에는 수식만 표시, = 후에만 결과 표시 ──
+function updateDisplay() {
+  exprEl.textContent = '';
+  resultEl.textContent = expr || '0';
+  adjustFont(resultEl.textContent.length);
+}
+
+function adjustFont(len) {
+  resultEl.className = 'result-line' +
+    (len > 18 ? ' xxs' : len > 14 ? ' xs' : len > 10 ? ' sm' : '');
+}
+
+function formatNum(n) {
+  if (!isFinite(n)) return n > 0 ? '∞' : '오류';
+  if (Number.isInteger(n) && Math.abs(n) < 1e15) return n.toLocaleString('ko-KR');
+  return parseFloat(n.toPrecision(10)).toString();
+}
+
+// ── 수식 → JS 변환 ──
+// 주의: log( 를 ln( 보다 먼저 치환해야 Math.log( 가 log10으로 오치환되지 않음
+function toJS(s) {
+  return s
+    .replace(/π/g,       'Math.PI')
+    .replace(/÷/g, '/').replace(/×/g, '*').replace(/−/g, '-')
+    .replace(/sqrt\(/g,  'Math.sqrt(')
+    .replace(/abs\(/g,   'Math.abs(')
+    .replace(/exp\(/g,   'Math.exp(')
+    .replace(/log\(/g,   'Math.log10(')   // log( 먼저
+    .replace(/ln\(/g,    'Math.log(')     // ln( 나중에 (Math.log( 와 충돌 없음)
+    .replace(/sin\(/g,   isRad ? 'Math.sin(' : 'Math.sin(Math.PI/180*(')
+    .replace(/cos\(/g,   isRad ? 'Math.cos(' : 'Math.cos(Math.PI/180*(')
+    .replace(/tan\(/g,   isRad ? 'Math.tan(' : 'Math.tan(Math.PI/180*(')
+    .replace(/(?<![a-zA-Z0-9])e(?![a-zA-Z0-9(])/g, 'Math.E')  // e 상수 (exp/log 치환 후)
+    .replace(/\^/g,      '**')
+    .replace(/²/g,       '**2');
+}
+
+function evaluate(s) {
+  if (!s) return null;
+  try {
+    const open  = (s.match(/\(/g) || []).length;
+    const close = (s.match(/\)/g) || []).length;
+    const fixed = s + ')'.repeat(Math.max(0, open - close));
+    const r = eval(toJS(fixed));
+    return typeof r === 'number' ? r : null;
+  } catch { return null; }
+}
+
+// ── 숫자 ──
+function pressNum(n) {
+  if (justEvaled) { expr = ''; justEvaled = false; }
+  if (/[)πe]$/.test(expr)) expr += '×';
+  expr += n;
+  updateDisplay();
+}
+
+// ── 연산자 ──
+function pressOp(op) {
+  justEvaled = false;
+  if (expr === '' && op === '−') { expr = '−'; updateDisplay(); return; }
+  if (expr === '') return;
+  if (/[+−×÷]$/.test(expr)) expr = expr.slice(0, -1);
+  expr += op;
+  updateDisplay();
+}
+
+// ── 소수점 ──
+function pressDot() {
+  if (justEvaled) { expr = '0'; justEvaled = false; }
+  if (expr === '') expr = '0';
+  const parts = expr.split(/[+−×÷(]/);
+  if (parts[parts.length - 1].includes('.')) return;
+  expr += '.';
+  updateDisplay();
+}
+
+// ── 괄호 ──
+function pressParen() {
+  if (justEvaled) { expr = ''; justEvaled = false; }
+  const open  = (expr.match(/\(/g) || []).length;
+  const close = (expr.match(/\)/g) || []).length;
+  if (open > close && expr !== '' && !/[+−×÷(]$/.test(expr)) expr += ')';
+  else { expr += /[0-9)]$/.test(expr) ? '×(' : '('; }
+  updateDisplay();
+}
+
+// ── % ──
+function pressPercent() {
+  const v = evaluate(expr);
+  if (v !== null) { expr = String(v / 100); justEvaled = false; updateDisplay(); }
+}
+
+// ── 부호 ──
+function pressSign() {
+  if (!expr || expr === '0') return;
+  expr = expr.startsWith('−(') && expr.endsWith(')') ? expr.slice(2, -1) : '−(' + expr + ')';
+  updateDisplay();
+}
+
+// ── C / ⌫ ──
+function pressClear() { expr = ''; justEvaled = false; updateDisplay(); }
+
+function pressBack() {
+  if (justEvaled) { expr = ''; justEvaled = false; updateDisplay(); return; }
+  const fns = ['sqrt(','abs(','ln(','log(','exp(','sin(','cos(','tan(','1/('];
+  for (const fn of fns) {
+    if (expr.endsWith(fn)) { expr = expr.slice(0, -fn.length); updateDisplay(); return; }
+  }
+  expr = expr.slice(0, -1);
+  updateDisplay();
+}
+
+// ── = : 이때만 계산 실행 ──
+function pressEqual() {
+  if (!expr) return;
+  const val = evaluate(expr);
+  if (val === null) { exprEl.textContent = ''; resultEl.textContent = '오류'; return; }
+
+  const formatted = formatNum(val);
+  // 이력 저장
+  history.unshift({ expr, result: formatted });
+  if (history.length > 50) history.pop();
+  renderHist();
+
+  exprEl.textContent = expr + ' =';
+  resultEl.textContent = formatted;
+  adjustFont(formatted.length);
+
+  expr = String(parseFloat(val.toPrecision(12)));
+  justEvaled = true;
+}
+
+// ── 공학 함수 ──
+function sciInput(token) {
+  if (justEvaled) { expr = ''; justEvaled = false; }
+  if (/[0-9)]$/.test(expr)) expr += '×';
+  expr += token;
+  updateDisplay();
+}
+function sciTrig(fn) { sciInput(fn + '('); }
+function sciConst(c) {
+  if (justEvaled) { expr = ''; justEvaled = false; }
+  if (/[0-9)]$/.test(expr)) expr += '×';
+  expr += c; updateDisplay();
+}
+function sciPow2() {
+  if (!expr || /[+−×÷(]$/.test(expr)) return;
+  expr = '(' + expr + ')²';
+  updateDisplay();
+}
+
+// xʸ: 반드시 숫자/상수/)가 마지막일 때만 동작
+function sciPowY() {
+  if (!expr || /[+−×÷(]$/.test(expr)) return;
+  expr += '^(';
+  updateDisplay();
+}
+
+// ── 공학 모드 토글 ──
+function toggleSci() {
+  isSciMode = !isSciMode;
+  document.getElementById('sciPanel').classList.toggle('show', isSciMode);
+  document.getElementById('sciBtn').classList.toggle('active', isSciMode);
+  document.body.classList.toggle('sci-on', isSciMode);
+  document.getElementById('mainBtnWrap').className = isSciMode
+    ? 'btn-wrap' : 'btn-wrap normal-wrap';
+  requestAnimationFrame(() => requestAnimationFrame(alignAll));
+}
+
+function toggleRad() {
+  isRad = !isRad;
+  const btn = document.getElementById('radBtn');
+  btn.textContent = isRad ? 'Rad' : 'Deg';
+  btn.classList.toggle('rad-on', !isRad);
+}
+
+// ── 이력 ──
+function toggleHist() {
+  isHistOpen = !isHistOpen;
+  document.getElementById('histBtn').classList.toggle('open', isHistOpen);
+  document.getElementById('histPanel').classList.toggle('show', isHistOpen);
+  document.getElementById('display').style.display = isHistOpen ? 'none' : '';
+}
+
+function renderHist() {
+  const panel = document.getElementById('histPanel');
+  const empty = document.getElementById('histEmpty');
+  // 기존 아이템 제거
+  panel.querySelectorAll('.hist-item').forEach(el => el.remove());
+  empty.style.display = history.length ? 'none' : '';
+  history.forEach(h => {
+    const item = document.createElement('div');
+    item.className = 'hist-item';
+    item.innerHTML = `<div class="hist-expr">${h.expr} =</div><div class="hist-result">${h.result}</div>`;
+    item.onclick = () => {
+      expr = h.result.replace(/,/g, '');
+      justEvaled = true;
+      exprEl.textContent = h.expr + ' =';
+      resultEl.textContent = h.result;
+      adjustFont(h.result.length);
+      if (isHistOpen) toggleHist();
+    };
+    panel.appendChild(item);
+  });
+}
+
+// ── 키보드 ──
+document.addEventListener('keydown', e => {
+  if (e.key >= '0' && e.key <= '9') pressNum(e.key);
+  else if (e.key === '+') pressOp('+');
+  else if (e.key === '-') pressOp('−');
+  else if (e.key === '*') pressOp('×');
+  else if (e.key === '/') { e.preventDefault(); pressOp('÷'); }
+  else if (e.key === '.') pressDot();
+  else if (e.key === 'Enter' || e.key === '=') pressEqual();
+  else if (e.key === 'Backspace') pressBack();
+  else if (e.key === 'Escape') pressClear();
+  else if (e.key === '(') { if (justEvaled){expr='';justEvaled=false;} expr += '('; updateDisplay(); }
+  else if (e.key === ')') { expr += ')'; updateDisplay(); }
+  else if (e.key === '%') pressPercent();
+});
+
+renderHist();
+updateDisplay();
+
+// ── 툴바·히스토리·디스플레이 우측을 버튼 그리드 우측에 정렬 ──
+function alignAll() {
+  const wrap = document.getElementById('mainBtnWrap');
+  if (!wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  const rightPad = Math.max(8, Math.round(window.innerWidth - rect.right));
+
+  document.getElementById('display').style.paddingRight   = rightPad + 'px';
+  document.getElementById('histPanel').style.paddingRight  = rightPad + 'px';
+  document.querySelector('.toolbar').style.paddingRight    = rightPad + 'px';
+}
+
+window.addEventListener('resize', alignAll);
+requestAnimationFrame(() => requestAnimationFrame(alignAll));
+
+// ── 버튼 클릭 후 포커스 해제 (키보드 입력 방해 방지) ──
+document.addEventListener('mousedown', e => {
+  if (e.target.closest('button')) e.preventDefault();
+}, { passive: false });
+</script>
+</body>
+</html>

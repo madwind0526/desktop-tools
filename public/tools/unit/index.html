@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #000;
+  color: #fff;
+  font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── 헤더 ── */
+.header {
+  padding: 16px 20px 10px;
+  font-size: 20px;
+  font-weight: 700;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+/* ── 카테고리 탭 ── */
+.cat-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.cat-tabs::-webkit-scrollbar { display: none; }
+
+.cat-tab {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 14px;
+  font-family: inherit;
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.cat-tab.active { background: #2d2d2d; color: #fff; font-weight: 700; }
+.cat-tab:hover  { color: #aaa; }
+
+/* ── 변환 영역 ── */
+.converter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px;
+  min-height: 0;
+}
+
+.unit-row {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-bottom: 1px solid #1a1a1a;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.unit-row.focused .value { color: #fff; }
+.unit-row:not(.focused) .value { color: #555; }
+
+.unit-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.unit-name {
+  font-size: 14px;
+  color: #888;
+}
+
+.unit-arrow { font-size: 10px; color: #555; }
+
+.value {
+  font-size: 48px;
+  font-weight: 200;
+  text-align: right;
+  word-break: break-all;
+  transition: font-size 0.1s;
+}
+.value.small  { font-size: 34px; }
+.value.xsmall { font-size: 26px; }
+
+.unit-symbol {
+  font-size: 18px;
+  color: #555;
+  text-align: right;
+  margin-top: 2px;
+}
+
+/* 드롭다운 */
+.unit-select {
+  background: #1a1a1a;
+  border: none;
+  color: #ccc;
+  font-size: 14px;
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 14px;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+}
+.unit-select option { background: #1a1a1a; }
+
+/* ── 키패드 ── */
+.keypad {
+  padding: 8px 10px 14px;
+  flex-shrink: 0;
+}
+
+/* HEX 행 */
+.hex-grid {
+  display: none;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.hex-grid.visible { display: grid; }
+
+/* 메인 키 그리드 */
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+/* ── 버튼 공통: 직사각형, 계산기와 동일한 크기 ── */
+.key {
+  height: 68px;
+  aspect-ratio: unset;
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Malgun Gothic', sans-serif;
+  transition: opacity 0.1s;
+}
+.key:active { opacity: 0.55; }
+
+.k-num   { background: #2d2d2d; color: #fff;    font-size: 22px; font-weight: 300; }
+.k-func  { background: #1a1a1a; color: #ccc;    font-size: 18px; }
+.k-nav   { background: #1a1a1a; color: #4ade80; font-size: 18px; }
+.k-clear { background: #1a1a1a; color: #f87171; font-size: 18px; font-weight: 500; }
+.k-back  { background: #1a1a1a; color: #fff;    font-size: 16px; }
+.k-dot   { background: #2d2d2d; color: #fff;    font-size: 22px; }
+.k-sign  { background: #1a1a1a; color: #ccc;    font-size: 14px; }
+.k-hex   { background: #1c1c1c; color: #a78bfa; font-size: 18px; font-weight: 600; }
+.k-hex:active { opacity: 0.55; }
+
+.key:disabled { opacity: 0.2; cursor: default; }
+</style>
+</head>
+<body>
+
+<div class="header">단위 계산기</div>
+
+<!-- 카테고리 탭 -->
+<div class="cat-tabs" id="catTabs"></div>
+
+<!-- 변환 영역 -->
+<div class="converter">
+  <div class="unit-row focused" id="rowTop" onclick="setFocus('top')">
+    <div class="unit-selector">
+      <select class="unit-select" id="selTop" onchange="onUnitChange('top')"></select>
+    </div>
+    <div class="value" id="valTop">0</div>
+    <div class="unit-symbol" id="symTop"></div>
+  </div>
+
+  <div class="unit-row" id="rowBot" onclick="setFocus('bot')">
+    <div class="unit-selector">
+      <select class="unit-select" id="selBot" onchange="onUnitChange('bot')"></select>
+    </div>
+    <div class="value" id="valBot">0</div>
+    <div class="unit-symbol" id="symBot"></div>
+  </div>
+</div>
+
+<!-- 키패드 -->
+<div class="keypad">
+  <!-- HEX 전용 행 (A–F), HEX 기준 입력 시만 표시 -->
+  <div class="hex-grid" id="hexRow">
+    <button class="key k-hex" onclick="pressNum('A')">A</button>
+    <button class="key k-hex" onclick="pressNum('B')">B</button>
+    <button class="key k-hex" onclick="pressNum('C')">C</button>
+    <button class="key k-hex" onclick="pressNum('D')">D</button>
+    <button class="key k-hex" onclick="pressNum('E')">E</button>
+    <button class="key k-hex" onclick="pressNum('F')">F</button>
+  </div>
+
+  <div class="key-grid">
+    <button class="key k-num"   onclick="pressNum('7')">7</button>
+    <button class="key k-num"   onclick="pressNum('8')">8</button>
+    <button class="key k-num"   onclick="pressNum('9')">9</button>
+    <button class="key k-clear" onclick="pressClear()">C</button>
+
+    <button class="key k-num"   onclick="pressNum('4')">4</button>
+    <button class="key k-num"   onclick="pressNum('5')">5</button>
+    <button class="key k-num"   onclick="pressNum('6')">6</button>
+    <button class="key k-back"  onclick="pressBack()">⌫</button>
+
+    <button class="key k-num"   onclick="pressNum('1')">1</button>
+    <button class="key k-num"   onclick="pressNum('2')">2</button>
+    <button class="key k-num"   onclick="pressNum('3')">3</button>
+    <button class="key k-nav"   onclick="setFocus('top')">↑</button>
+
+    <button class="key k-sign"  id="btnSign" onclick="pressSign()">+/−</button>
+    <button class="key k-num"   onclick="pressNum('0')">0</button>
+    <button class="key k-dot"   id="btnDot"  onclick="pressDot()">.</button>
+    <button class="key k-nav"   onclick="setFocus('bot')">↓</button>
+  </div>
+</div>
+
+<script>
+// ── 단위 데이터 ──
+const CATEGORIES = {
+  '면적': {
+    base: 'm²',
+    units: [
+      { name: '제곱킬로미터', sym: 'km²',  factor: 1e6 },
+      { name: '제곱미터',     sym: 'm²',   factor: 1 },
+      { name: '제곱센티미터', sym: 'cm²',  factor: 1e-4 },
+      { name: '제곱밀리미터', sym: 'mm²',  factor: 1e-6 },
+      { name: '평',          sym: '평',   factor: 3.30579 },
+      { name: '에이커',       sym: 'ac',   factor: 4046.86 },
+      { name: '헥타르',       sym: 'ha',   factor: 1e4 },
+      { name: '제곱피트',     sym: 'ft²',  factor: 0.092903 },
+      { name: '제곱인치',     sym: 'in²',  factor: 0.00064516 },
+      { name: '제곱마일',     sym: 'mi²',  factor: 2.59e6 },
+    ]
+  },
+  '길이': {
+    base: 'm',
+    units: [
+      { name: '킬로미터',  sym: 'km',  factor: 1000 },
+      { name: '미터',      sym: 'm',   factor: 1 },
+      { name: '센티미터',  sym: 'cm',  factor: 0.01 },
+      { name: '밀리미터',  sym: 'mm',  factor: 0.001 },
+      { name: '마이크로미터', sym: 'µm', factor: 1e-6 },
+      { name: '마일',      sym: 'mi',  factor: 1609.34 },
+      { name: '야드',      sym: 'yd',  factor: 0.9144 },
+      { name: '피트',      sym: 'ft',  factor: 0.3048 },
+      { name: '인치',      sym: 'in',  factor: 0.0254 },
+      { name: '해리',      sym: 'nmi', factor: 1852 },
+      { name: '광년',      sym: 'ly',  factor: 9.461e15 },
+    ]
+  },
+  '온도': {
+    base: '°C',
+    units: [
+      { name: '섭씨',   sym: '°C' },
+      { name: '화씨',   sym: '°F' },
+      { name: '켈빈',   sym: 'K'  },
+    ]
+  },
+  '부피': {
+    base: 'L',
+    units: [
+      { name: '세제곱미터', sym: 'm³',  factor: 1000 },
+      { name: '리터',       sym: 'L',   factor: 1 },
+      { name: '밀리리터',   sym: 'mL',  factor: 0.001 },
+      { name: '세제곱센티미터', sym: 'cm³', factor: 0.001 },
+      { name: '갤런(미국)', sym: 'gal', factor: 3.78541 },
+      { name: '쿼트',      sym: 'qt',  factor: 0.946353 },
+      { name: '파인트',     sym: 'pt',  factor: 0.473176 },
+      { name: '컵',        sym: 'cup', factor: 0.236588 },
+      { name: '온스(액량)', sym: 'fl oz', factor: 0.0295735 },
+      { name: '테이블스푼', sym: 'tbsp', factor: 0.0147868 },
+      { name: '티스푼',    sym: 'tsp', factor: 0.00492892 },
+    ]
+  },
+  '무게': {
+    base: 'kg',
+    units: [
+      { name: '톤',       sym: 't',   factor: 1000 },
+      { name: '킬로그램', sym: 'kg',  factor: 1 },
+      { name: '그램',     sym: 'g',   factor: 0.001 },
+      { name: '밀리그램', sym: 'mg',  factor: 1e-6 },
+      { name: '파운드',   sym: 'lb',  factor: 0.453592 },
+      { name: '온스',     sym: 'oz',  factor: 0.0283495 },
+      { name: '돈',       sym: '돈',  factor: 0.00375 },
+      { name: '근',       sym: '근',  factor: 0.6 },
+    ]
+  },
+  '속도': {
+    base: 'm/s',
+    units: [
+      { name: '미터/초',      sym: 'm/s',  factor: 1 },
+      { name: '킬로미터/시',  sym: 'km/h', factor: 0.277778 },
+      { name: '마일/시',      sym: 'mph',  factor: 0.44704 },
+      { name: '노트',         sym: 'kn',   factor: 0.514444 },
+      { name: '피트/초',      sym: 'ft/s', factor: 0.3048 },
+      { name: '마하',         sym: 'Ma',   factor: 343 },
+    ]
+  },
+  '진수 변환': {
+    isBase: true,
+    units: [
+      { name: '2진수  (BIN)',  sym: 'BIN', base: 2  },
+      { name: '8진수  (OCT)',  sym: 'OCT', base: 8  },
+      { name: '10진수 (DEC)', sym: 'DEC', base: 10 },
+      { name: '16진수 (HEX)', sym: 'HEX', base: 16 },
+    ]
+  },
+};
+
+const CAT_KEYS = Object.keys(CATEGORIES);
+let currentCat = CAT_KEYS[0];
+let focused = 'top';
+let topVal = '';
+let botVal = '';
+
+// ── 초기화 ──
+function init() {
+  const tabsEl = document.getElementById('catTabs');
+  CAT_KEYS.forEach(k => {
+    const btn = document.createElement('button');
+    btn.className = 'cat-tab' + (k === currentCat ? ' active' : '');
+    btn.textContent = k;
+    btn.onclick = () => selectCat(k);
+    tabsEl.appendChild(btn);
+  });
+  loadCat();
+}
+
+function selectCat(cat) {
+  currentCat = cat;
+  document.querySelectorAll('.cat-tab').forEach((el, i) => {
+    el.classList.toggle('active', CAT_KEYS[i] === cat);
+  });
+  topVal = ''; botVal = '';
+  loadCat();
+}
+
+function loadCat() {
+  const cat = CATEGORIES[currentCat];
+  ['selTop', 'selBot'].forEach((id, i) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = cat.units.map((u, j) =>
+      `<option value="${j}">${u.name}</option>`
+    ).join('');
+    // 진수 변환 기본값: 위=DEC(2), 아래=HEX(3)
+    if (cat.isBase) {
+      sel.value = i === 0 ? '2' : '3';
+    } else {
+      sel.value = i === 0 ? '0' : '1';
+    }
+  });
+  updateSymbols();
+  updateDisplay();
+  updateKeypad();
+}
+
+function updateSymbols() {
+  const cat = CATEGORIES[currentCat];
+  const iTop = parseInt(document.getElementById('selTop').value);
+  const iBot = parseInt(document.getElementById('selBot').value);
+  document.getElementById('symTop').textContent = cat.units[iTop].sym;
+  document.getElementById('symBot').textContent = cat.units[iBot].sym;
+}
+
+function onUnitChange(side) {
+  updateSymbols();
+  if (side === 'top' && topVal !== '') {
+    botVal = convert(topVal, 'top', 'bot');
+  } else if (side === 'bot' && botVal !== '') {
+    topVal = convert(botVal, 'bot', 'top');
+  }
+  updateDisplay();
+  updateKeypad();
+}
+
+// ── 진수 변환 로직 ──
+function getFocusedBase() {
+  if (!CATEGORIES[currentCat].isBase) return 10;
+  const selId = focused === 'top' ? 'selTop' : 'selBot';
+  const idx = parseInt(document.getElementById(selId).value);
+  return CATEGORIES[currentCat].units[idx].base;
+}
+
+function isValidChar(char) {
+  const base = getFocusedBase();
+  if (base === 16) return /^[0-9a-fA-F]$/.test(char);
+  if (base === 10) return /^[0-9]$/.test(char);
+  if (base ===  8) return /^[0-7]$/.test(char);
+  if (base ===  2) return /^[01]$/.test(char);
+  return /^[0-9]$/.test(char);
+}
+
+function convertBase(val, fromSide, toSide) {
+  if (!val) return '';
+  const fromIdx = parseInt(document.getElementById(fromSide === 'top' ? 'selTop' : 'selBot').value);
+  const toIdx   = parseInt(document.getElementById(toSide   === 'top' ? 'selTop' : 'selBot').value);
+  const fromBase = CATEGORIES[currentCat].units[fromIdx].base;
+  const toBase   = CATEGORIES[currentCat].units[toIdx].base;
+  const decimal = parseInt(val, fromBase);
+  if (isNaN(decimal)) return '오류';
+  return decimal.toString(toBase).toUpperCase();
+}
+
+// ── 일반 변환 로직 ──
+function toBase(val, unitIdx) {
+  const cat = CATEGORIES[currentCat];
+  const u = cat.units[unitIdx];
+  const n = parseFloat(val);
+  if (isNaN(n)) return NaN;
+
+  if (currentCat === '온도') {
+    if (unitIdx === 0) return n;
+    if (unitIdx === 1) return (n - 32) * 5 / 9;
+    if (unitIdx === 2) return n - 273.15;
+  }
+  return n * u.factor;
+}
+
+function fromBase(baseVal, unitIdx) {
+  const cat = CATEGORIES[currentCat];
+  const u = cat.units[unitIdx];
+
+  if (currentCat === '온도') {
+    if (unitIdx === 0) return baseVal;
+    if (unitIdx === 1) return baseVal * 9 / 5 + 32;
+    if (unitIdx === 2) return baseVal + 273.15;
+  }
+  return baseVal / u.factor;
+}
+
+function convert(val, fromSide, toSide) {
+  if (CATEGORIES[currentCat].isBase) {
+    return convertBase(val, fromSide, toSide);
+  }
+  const fromIdx = parseInt(document.getElementById(fromSide === 'top' ? 'selTop' : 'selBot').value);
+  const toIdx   = parseInt(document.getElementById(toSide   === 'top' ? 'selTop' : 'selBot').value);
+  const base = toBase(val, fromIdx);
+  if (isNaN(base)) return '';
+  const result = fromBase(base, toIdx);
+  if (!isFinite(result)) return '오류';
+  if (Math.abs(result) >= 1e10 || (Math.abs(result) < 1e-6 && result !== 0)) {
+    return result.toExponential(4);
+  }
+  return parseFloat(result.toPrecision(8)).toString();
+}
+
+// ── 포커스 ──
+function setFocus(side) {
+  focused = side;
+  document.getElementById('rowTop').classList.toggle('focused', side === 'top');
+  document.getElementById('rowBot').classList.toggle('focused', side === 'bot');
+  updateKeypad();
+}
+
+// ── 키패드 상태 업데이트 ──
+function updateKeypad() {
+  const isBase = !!CATEGORIES[currentCat].isBase;
+  const activeBase = getFocusedBase();
+
+  // HEX 행 표시: 진수 변환 모드이고 포커스된 필드가 HEX일 때
+  document.getElementById('hexRow').classList.toggle('visible', isBase && activeBase === 16);
+
+  // 소수점 / 부호 버튼: 진수 변환 모드에서 비활성화
+  document.getElementById('btnDot').disabled  = isBase;
+  document.getElementById('btnSign').disabled = isBase;
+}
+
+// ── 키패드 ──
+function pressNum(n) {
+  if (!isValidChar(n)) return;
+  const ch = n.toUpperCase();
+  if (focused === 'top') {
+    topVal += ch;
+    botVal = convert(topVal, 'top', 'bot');
+  } else {
+    botVal += ch;
+    topVal = convert(botVal, 'bot', 'top');
+  }
+  updateDisplay();
+}
+
+function pressDot() {
+  if (CATEGORIES[currentCat].isBase) return;
+  const cur = focused === 'top' ? topVal : botVal;
+  if (cur.includes('.')) return;
+  if (focused === 'top') { topVal = (topVal || '0') + '.'; }
+  else                   { botVal = (botVal || '0') + '.'; }
+  updateDisplay();
+}
+
+function pressSign() {
+  if (CATEGORIES[currentCat].isBase) return;
+  if (focused === 'top') {
+    topVal = topVal.startsWith('-') ? topVal.slice(1) : (topVal ? '-' + topVal : '');
+    botVal = convert(topVal, 'top', 'bot');
+  } else {
+    botVal = botVal.startsWith('-') ? botVal.slice(1) : (botVal ? '-' + botVal : '');
+    topVal = convert(botVal, 'bot', 'top');
+  }
+  updateDisplay();
+}
+
+function pressBack() {
+  if (focused === 'top') {
+    topVal = topVal.slice(0, -1);
+    botVal = topVal ? convert(topVal, 'top', 'bot') : '';
+  } else {
+    botVal = botVal.slice(0, -1);
+    topVal = botVal ? convert(botVal, 'bot', 'top') : '';
+  }
+  updateDisplay();
+}
+
+function pressClear() {
+  topVal = ''; botVal = '';
+  updateDisplay();
+}
+
+// ── 디스플레이 ──
+function fmtVal(v) {
+  if (v === '' || v === '-' || v.endsWith('.')) return v || '0';
+  return v;
+}
+
+function setValueEl(id, v) {
+  const el = document.getElementById(id);
+  el.textContent = fmtVal(v);
+  const len = el.textContent.length;
+  el.className = 'value' + (len > 14 ? ' xsmall' : len > 10 ? ' small' : '');
+}
+
+function updateDisplay() {
+  setValueEl('valTop', topVal);
+  setValueEl('valBot', botVal);
+}
+
+// ── 키보드 지원 ──
+document.addEventListener('keydown', e => {
+  if (document.activeElement.tagName === 'SELECT') return;
+
+  const key = e.key;
+  if (/^[0-9]$/.test(key))           { e.preventDefault(); pressNum(key); }
+  else if (/^[a-fA-F]$/.test(key))   { e.preventDefault(); pressNum(key); }
+  else if (key === '.')               { e.preventDefault(); pressDot(); }
+  else if (key === 'Backspace')       { e.preventDefault(); pressBack(); }
+  else if (key === 'Escape' || key === 'Delete') { e.preventDefault(); pressClear(); }
+  else if (key === '-')               { e.preventDefault(); pressSign(); }
+  else if (key === 'ArrowUp')         { e.preventDefault(); setFocus('top'); }
+  else if (key === 'ArrowDown')       { e.preventDefault(); setFocus('bot'); }
+  else if (key === 'Tab') {
+    e.preventDefault();
+    setFocus(focused === 'top' ? 'bot' : 'top');
+  }
+});
+
+init();
+</script>
+</body>
+</html>

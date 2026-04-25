@@ -1,0 +1,25 @@
+# 의존성
+node_modules/
+
+# 빌드 결과물
+dist/
+dist-packager/
+
+# Electron 캐시
+.webpack/
+
+# 환경 설정
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 에디터
+.vscode/
+.idea/
+
+# 로그
+*.log
+npm-debug.log*

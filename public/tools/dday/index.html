@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+body { overflow-y: auto; background: var(--bg); }
+
+/* ── 모드 버튼 ── */
+.mode-btns {
+  display: flex; gap: 8px; margin-bottom: 20px;
+}
+.mode-btn {
+  padding: 7px 18px;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--text2);
+  font-size: 15px; font-weight: 800;
+  font-family: 'Malgun Gothic', monospace;
+  cursor: pointer; letter-spacing: -0.5px;
+  transition: all 0.15s;
+}
+.mode-btn:hover { border-color: var(--accent); color: var(--text); }
+.mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── 날짜 레이블 ── */
+.date-label {
+  font-size: 12px; color: var(--text2);
+  font-weight: 700; margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.today-btn {
+  font-size: 12px; color: var(--accent);
+  background: none; border: none; cursor: pointer;
+  font-family: inherit; font-weight: 700;
+  padding: 2px 8px; border-radius: 4px;
+  transition: background 0.15s;
+}
+.today-btn:hover { background: var(--bg3); }
+
+/* ── 날짜 입력 (연/월/일 분리, 음력 변환기와 동일 스타일) ── */
+.date-ymd {
+  display: flex; gap: 6px; align-items: center;
+  margin-bottom: 16px; flex-wrap: nowrap;
+}
+.date-ymd input[type="number"] {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px; font-family: inherit;
+  padding: 9px 10px; outline: none;
+  -moz-appearance: textfield;
+  transition: border-color 0.2s;
+}
+.date-ymd input[type="number"]:focus { border-color: var(--accent); }
+.date-ymd input[type="number"]::-webkit-inner-spin-button,
+.date-ymd input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+.date-ymd .year-inp { width: 90px; }
+.date-ymd .day-inp  { width: 62px; }
+
+.date-ymd select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px; font-family: inherit;
+  padding: 9px 10px; outline: none;
+  cursor: pointer; width: 74px;
+}
+.date-ymd select:focus { border-color: var(--accent); }
+.date-ymd select option { background: var(--bg3); }
+.date-ymd .sep { font-size: 16px; color: var(--text3); flex-shrink: 0; }
+
+/* 달력 아이콘 버튼 */
+.cal-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text2); font-size: 18px;
+  padding: 9px 11px; cursor: pointer;
+  transition: background 0.15s; flex-shrink: 0;
+}
+.cal-btn:hover { background: var(--border); }
+.hidden-date { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+
+/* 일 수 입력 (D± 모드) */
+.num-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px; font-family: inherit;
+  padding: 10px 14px; outline: none;
+  transition: border-color 0.2s;
+  margin-bottom: 16px;
+}
+.num-input:focus { border-color: var(--accent); }
+
+/* ── 결과 박스 ── */
+.result-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px; text-align: center;
+  min-height: 120px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px;
+}
+.dday-badge  { font-size: 52px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+.dday-today  { color: var(--success); }
+.dday-past   { color: var(--text2); }
+.dday-future { color: var(--accent2); }
+.dday-label  { font-size: 14px; color: var(--text2); }
+.dday-detail { font-size: 13px; color: var(--text3); }
+
+.result-date     { font-size: 26px; font-weight: 700; color: var(--text); }
+.result-date-sub { font-size: 13px; color: var(--text2); }
+
+.panel { display: none; }
+.panel.active { display: block; }
+</style>
+</head>
+<body>
+<div class="tool-panel active">
+
+  <div class="mode-btns">
+    <button class="mode-btn active" onclick="switchMode(0)"
+      title="기준 날짜로부터 오늘까지 며칠이 지났는지 계산">D+</button>
+    <button class="mode-btn" onclick="switchMode(1)"
+      title="오늘부터 목표 날짜까지 며칠이 남았는지 계산">D−</button>
+    <button class="mode-btn" onclick="switchMode(2)"
+      title="날짜에서 N일 후/전이 언제인지 계산">D±</button>
+  </div>
+
+  <!-- 모드 0: D+ -->
+  <div class="panel active" id="panel0">
+    <div class="date-label">기준 날짜 <button class="today-btn" onclick="setToday(0)">오늘</button></div>
+    <div class="date-ymd">
+      <input type="number" class="year-inp" id="year0" placeholder="연도" min="1900" max="2200"
+             oninput="calc0()" onkeydown="if(event.key==='Enter') calc0()">
+      <span class="sep">년</span>
+      <select id="month0" onchange="calc0()">
+        <option value="1">1월</option><option value="2">2월</option>
+        <option value="3">3월</option><option value="4">4월</option>
+        <option value="5">5월</option><option value="6">6월</option>
+        <option value="7">7월</option><option value="8">8월</option>
+        <option value="9">9월</option><option value="10">10월</option>
+        <option value="11">11월</option><option value="12">12월</option>
+      </select>
+      <span class="sep">월</span>
+      <input type="number" class="day-inp" id="day0" placeholder="일" min="1" max="31"
+             oninput="calc0()" onkeydown="if(event.key==='Enter') calc0()">
+      <span class="sep">일</span>
+      <button class="cal-btn" onclick="openCal(0)" title="달력으로 선택">📅</button>
+      <input class="hidden-date" type="date" id="cal0" onchange="onCalChange(0)">
+    </div>
+    <div class="result-box" id="result0">
+      <div style="color:var(--text3);font-size:14px;">날짜를 입력하세요</div>
+    </div>
+  </div>
+
+  <!-- 모드 1: D- -->
+  <div class="panel" id="panel1">
+    <div class="date-label">목표 날짜 <button class="today-btn" onclick="setToday(1)">오늘</button></div>
+    <div class="date-ymd">
+      <input type="number" class="year-inp" id="year1" placeholder="연도" min="1900" max="2200"
+             oninput="calc1()" onkeydown="if(event.key==='Enter') calc1()">
+      <span class="sep">년</span>
+      <select id="month1" onchange="calc1()">
+        <option value="1">1월</option><option value="2">2월</option>
+        <option value="3">3월</option><option value="4">4월</option>
+        <option value="5">5월</option><option value="6">6월</option>
+        <option value="7">7월</option><option value="8">8월</option>
+        <option value="9">9월</option><option value="10">10월</option>
+        <option value="11">11월</option><option value="12">12월</option>
+      </select>
+      <span class="sep">월</span>
+      <input type="number" class="day-inp" id="day1" placeholder="일" min="1" max="31"
+             oninput="calc1()" onkeydown="if(event.key==='Enter') calc1()">
+      <span class="sep">일</span>
+      <button class="cal-btn" onclick="openCal(1)" title="달력으로 선택">📅</button>
+      <input class="hidden-date" type="date" id="cal1" onchange="onCalChange(1)">
+    </div>
+    <div class="result-box" id="result1">
+      <div style="color:var(--text3);font-size:14px;">목표 날짜를 입력하세요</div>
+    </div>
+  </div>
+
+  <!-- 모드 2: D± -->
+  <div class="panel" id="panel2">
+    <div class="date-label">시작 날짜 <button class="today-btn" onclick="setToday(2)">오늘</button></div>
+    <div class="date-ymd">
+      <input type="number" class="year-inp" id="year2" placeholder="연도" min="1900" max="2200"
+             oninput="calc2()" onkeydown="if(event.key==='Enter') calc2()">
+      <span class="sep">년</span>
+      <select id="month2" onchange="calc2()">
+        <option value="1">1월</option><option value="2">2월</option>
+        <option value="3">3월</option><option value="4">4월</option>
+        <option value="5">5월</option><option value="6">6월</option>
+        <option value="7">7월</option><option value="8">8월</option>
+        <option value="9">9월</option><option value="10">10월</option>
+        <option value="11">11월</option><option value="12">12월</option>
+      </select>
+      <span class="sep">월</span>
+      <input type="number" class="day-inp" id="day2" placeholder="일" min="1" max="31"
+             oninput="calc2()" onkeydown="if(event.key==='Enter') calc2()">
+      <span class="sep">일</span>
+      <button class="cal-btn" onclick="openCal(2)" title="달력으로 선택">📅</button>
+      <input class="hidden-date" type="date" id="cal2" onchange="onCalChange(2)">
+    </div>
+    <div class="date-label" style="margin-top:4px;">더하거나 뺄 일 수 (음수 = 이전 날짜)</div>
+    <input class="num-input" type="number" id="ndays" placeholder="예: 100  또는  -30"
+           oninput="calc2()" onkeydown="if(event.key==='Enter') calc2()">
+    <div class="result-box" id="result2">
+      <div style="color:var(--text3);font-size:14px;">날짜와 일 수를 입력하세요</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const WEEK = ['일','월','화','수','목','금','토'];
+
+function today()    { const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }
+function todayStr() { return fmtISO(today()); }
+
+function fmtISO(d)  {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtKo(d)   {
+  const p2 = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}년 ${p2(d.getMonth()+1)}월 ${p2(d.getDate())}일 (${WEEK[d.getDay()]})`;
+}
+function diffDays(a,b) { return Math.round((b-a)/86400000); }
+
+function fmtDuration(days) {
+  const abs = Math.abs(days);
+  const y = Math.floor(abs/365), m = Math.floor((abs%365)/30), d = abs%30;
+  const p = [];
+  if(y) p.push(`${y}년`); if(m) p.push(`${m}개월`); if(d||!p.length) p.push(`${d}일`);
+  return p.join(' ');
+}
+
+// ── 날짜 읽기 ──
+function getDate(idx) {
+  const y = parseInt(document.getElementById(`year${idx}`).value);
+  const m = parseInt(document.getElementById(`month${idx}`).value);
+  const d = parseInt(document.getElementById(`day${idx}`).value);
+  if (!y || !m || !d || d < 1 || d > 31) return null;
+  const dt = new Date(y, m - 1, d);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+// ── 오늘 세팅 ──
+function setToday(idx) {
+  const t = new Date();
+  document.getElementById(`year${idx}`).value  = t.getFullYear();
+  document.getElementById(`month${idx}`).value = t.getMonth() + 1;
+  document.getElementById(`day${idx}`).value   = t.getDate();
+  if (idx === 0) calc0();
+  else if (idx === 1) calc1();
+  else calc2();
+}
+
+// ── 달력 열기 / 반영 ──
+function openCal(idx) {
+  const cal = document.getElementById(`cal${idx}`);
+  cal.showPicker ? cal.showPicker() : cal.click();
+}
+
+function onCalChange(idx) {
+  const val = document.getElementById(`cal${idx}`).value;
+  if (!val) return;
+  const [y, m, d] = val.split('-').map(Number);
+  document.getElementById(`year${idx}`).value  = y;
+  document.getElementById(`month${idx}`).value = m;
+  document.getElementById(`day${idx}`).value   = d;
+  if (idx === 0) calc0();
+  else if (idx === 1) calc1();
+  else calc2();
+}
+
+// ── 모드 전환 ──
+let currentMode = 0;
+function switchMode(n) {
+  currentMode = n;
+  document.querySelectorAll('.mode-btn').forEach((el,i) => el.classList.toggle('active', i===n));
+  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', i===n));
+}
+
+// ── 계산 ──
+function calc0() {
+  const d = getDate(0);
+  const box = document.getElementById('result0');
+  if (!d) { box.innerHTML='<div style="color:var(--text3);font-size:14px;">날짜를 입력하세요</div>'; return; }
+  const t = today(), diff = diffDays(d, t);
+  let badge, cls, label, detail;
+  if (diff===0) { badge='D-Day'; cls='dday-today'; label='오늘입니다! 🎉'; }
+  else if (diff>0) {
+    badge=`D+${diff.toLocaleString()}`; cls='dday-past';
+    label=`${fmtKo(d)} 으로부터`; detail=`${fmtDuration(diff)} 지났습니다`;
+  } else {
+    badge=`D-${Math.abs(diff).toLocaleString()}`; cls='dday-future';
+    label=`${fmtKo(d)} 까지`; detail=`${fmtDuration(diff)} 남았습니다`;
+  }
+  box.innerHTML=`<div class="dday-badge ${cls}">${badge}</div>
+    <div class="dday-label">${label}</div>
+    ${detail?`<div class="dday-detail">${detail}</div>`:''}
+    <div class="dday-detail" style="margin-top:8px">오늘: ${fmtKo(t)}</div>`;
+}
+
+function calc1() {
+  const d = getDate(1);
+  const box = document.getElementById('result1');
+  if (!d) { box.innerHTML='<div style="color:var(--text3);font-size:14px;">날짜를 입력하세요</div>'; return; }
+  const t = today(), diff = diffDays(t, d);
+  let badge, cls, label, detail;
+  if (diff===0) { badge='D-Day'; cls='dday-today'; label='오늘입니다! 🎉'; }
+  else if (diff>0) {
+    badge=`D-${diff.toLocaleString()}`; cls='dday-future';
+    label=`${fmtKo(d)} 까지`; detail=`${fmtDuration(diff)} 남았습니다`;
+  } else {
+    badge=`D+${Math.abs(diff).toLocaleString()}`; cls='dday-past';
+    label=`${fmtKo(d)} 으로부터`; detail=`${fmtDuration(diff)} 지났습니다`;
+  }
+  box.innerHTML=`<div class="dday-badge ${cls}">${badge}</div>
+    <div class="dday-label">${label}</div>
+    ${detail?`<div class="dday-detail">${detail}</div>`:''}
+    <div class="dday-detail" style="margin-top:8px">오늘: ${fmtKo(t)}</div>`;
+}
+
+function calc2() {
+  const d = getDate(2);
+  const n = parseInt(document.getElementById('ndays').value);
+  const box = document.getElementById('result2');
+  if (!d || isNaN(n)) { box.innerHTML='<div style="color:var(--text3);font-size:14px;">날짜와 일 수를 입력하세요</div>'; return; }
+  const result = new Date(d); result.setDate(result.getDate() + n);
+  const dir = n >= 0 ? '후' : '전';
+  box.innerHTML=`<div class="dday-label">${fmtKo(d)} 에서 ${Math.abs(n).toLocaleString()}일 ${dir}</div>
+    <div class="result-date">${fmtKo(result)}</div>
+    <div class="result-date-sub" style="margin-top:6px;color:var(--text3)">${fmtISO(result)}</div>`;
+}
+
+// 초기값: 오늘
+setToday(0); setToday(1); setToday(2);
+</script>
+</body>
+</html>
