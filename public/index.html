@@ -2,9 +2,18 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:3001; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://open.er-api.com;">
 <title>Desktop Tools</title>
 <link rel="stylesheet" href="css/common.css">
+<script>
+  /* Electron 환경이 아니면 타이틀바 숨김 */
+  if (typeof window.electronAPI === 'undefined') {
+    document.documentElement.classList.add('web-mode');
+  }
+</script>
+<style>
+  .web-mode .titlebar { display: none !important; }
+</style>
 </head>
 <body>
 

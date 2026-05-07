@@ -246,7 +246,9 @@ body {
   </div>
 </div>
 
-<script>
+<script type="module">
+import KoreanLunarCalendar from '../../lib/korean-lunar-calendar.esm.js';
+
 const p2 = n => String(n).padStart(2, '0');
 
 // ── 간지 계산 ──
@@ -266,16 +268,19 @@ function getDow(y, m, d) {
   return DOW_KO[new Date(y, m - 1, d).getDay()];
 }
 
-// ── API 호출 ──
-async function apiSolarToLunar(year, month, day) {
-  const res = await fetch(`http://localhost:3001/api/lunar/to-lunar?year=${year}&month=${month}&day=${day}`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+// ── KoreanLunarCalendar 직접 사용 (서버 불필요) ──
+const lunarCal = new KoreanLunarCalendar();
+
+function calcSolarToLunar(year, month, day) {
+  const ok = lunarCal.setSolarDate(year, month, day);
+  if (!ok) throw new Error('지원하지 않는 날짜입니다');
+  return lunarCal.getLunarCalendar();
 }
-async function apiLunarToSolar(year, month, day, leap) {
-  const res = await fetch(`http://localhost:3001/api/lunar/to-solar?year=${year}&month=${month}&day=${day}&leap=${leap}`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+
+function calcLunarToSolar(year, month, day, isLeap) {
+  const ok = lunarCal.setLunarDate(year, month, day, isLeap);
+  if (!ok) throw new Error('지원하지 않는 날짜입니다');
+  return lunarCal.getSolarCalendar();
 }
 
 // ── 모드 전환 ──
@@ -288,7 +293,7 @@ function switchMode(mode) {
 }
 
 // ── 변환: 양력 → 음력 ──
-async function convertSolarToLunar() {
+function convertSolarToLunar() {
   const y = parseInt(document.getElementById('solarYear').value);
   const m = parseInt(document.getElementById('solarMonth').value);
   const d = parseInt(document.getElementById('solarDay').value);
@@ -297,8 +302,7 @@ async function convertSolarToLunar() {
     return;
   }
   try {
-    showLoading();
-    const lunar = await apiSolarToLunar(y, m, d);
+    const lunar = calcSolarToLunar(y, m, d);
     const dow   = getDow(y, m, d);
     showResult(
       `(양력): ${y}년 ${p2(m)}월 ${p2(d)}일 (${dow})`,
@@ -311,7 +315,7 @@ async function convertSolarToLunar() {
 }
 
 // ── 변환: 음력 → 양력 ──
-async function convertLunarToSolar() {
+function convertLunarToSolar() {
   const y    = parseInt(document.getElementById('lunarYear').value);
   const m    = parseInt(document.getElementById('lunarMonth').value);
   const d    = parseInt(document.getElementById('lunarDay').value);
@@ -321,8 +325,7 @@ async function convertLunarToSolar() {
     return;
   }
   try {
-    showLoading();
-    const solar = await apiLunarToSolar(y, m, d, leap);
+    const solar = calcLunarToSolar(y, m, d, leap);
     const dow   = getDow(solar.year, solar.month, solar.day);
     showResult(
       `(음력): ${y}년 ${leap ? '윤' : ''}${p2(m)}월 ${p2(d)}일 (${dow})`,
@@ -343,10 +346,6 @@ function showResult(line1, line2, line3) {
       <div class="result-line dim">${line3}</div>
     </div>`;
 }
-function showLoading() {
-  document.getElementById('resultArea').innerHTML =
-    `<div class="result-empty"><div class="result-empty-icon" style="font-size:32px;animation:spin 0.8s linear infinite">🔄</div><p>변환 중...</p></div>`;
-}
 function showError(msg) {
   document.getElementById('resultArea').innerHTML =
     `<div class="result-card"><div class="result-error">⚠️ ${msg}</div></div>`;
@@ -360,7 +359,7 @@ function showEmptyResult() {
 }
 
 // ── 오늘 정보 ──
-async function loadTodayInfo() {
+function loadTodayInfo() {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
   const dow = getDow(y, m, d);
@@ -374,7 +373,7 @@ async function loadTodayInfo() {
   document.getElementById('solarDay').value   = d;
 
   try {
-    const lunar = await apiSolarToLunar(y, m, d);
+    const lunar = calcSolarToLunar(y, m, d);
     document.getElementById('todayLunar').textContent =
       `(음력): ${lunar.year}년 ${lunar.intercalation ? '윤' : ''}${p2(lunar.month)}월 ${p2(lunar.day)}일 (${dow})`;
     document.getElementById('todayGanjok').textContent = getGanjok(lunar.year);
@@ -384,10 +383,15 @@ async function loadTodayInfo() {
     document.getElementById('lunarMonth').value = lunar.month;
     document.getElementById('lunarDay').value   = lunar.day;
   } catch(e) {
-    document.getElementById('todayLunar').textContent  = '(음력): 연결 중...';
-    document.getElementById('todayGanjok').textContent = '서버 시작 후 자동 갱신됩니다';
+    document.getElementById('todayLunar').textContent  = '(음력): 오류';
+    document.getElementById('todayGanjok').textContent = '';
   }
 }
+
+// ── HTML onclick 속성에서 호출 가능하도록 window에 노출 ──
+window.switchMode = switchMode;
+window.convertSolarToLunar = convertSolarToLunar;
+window.convertLunarToSolar = convertLunarToSolar;
 
 loadTodayInfo();
 </script>
